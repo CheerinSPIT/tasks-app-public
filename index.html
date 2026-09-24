@@ -53,14 +53,14 @@
   .brand { font-size:23px; font-weight:700; letter-spacing:-0.5px; }
   .brand span { color:#6ea8fe; }
   .header-date { font-size:12.5px; color:rgba(255,255,255,0.6); font-weight:500; text-align:right; }
-  .lan { display:flex; align-items:center; gap:12px; margin-top:16px; position:relative; z-index:1; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:10px 12px; }
-  .lan-text { flex:1; min-width:0; }
+  .lan { display:flex; flex-direction:column; align-items:stretch; gap:10px; margin-top:16px; position:relative; z-index:1; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:12px; }
+  .lan-text { min-width:0; }
   .lan-label { font-size:11px; color:rgba(255,255,255,0.6); font-weight:600; }
   .lan-url { font-size:12.5px; font-weight:700; word-break:break-all; margin-top:2px; user-select:text; }
   .lan-meta { font-size:11px; color:rgba(255,255,255,0.55); margin-top:2px; }
   .lan-state { font-size:11px; margin-top:3px; color:#9ad0ff; }
   .lan-state.wait { color:#ffd089; }
-  .lan img { width:72px; height:72px; border-radius:8px; background:#fff; flex-shrink:0; }
+  .lan img, #lanScan { width:100%; height:auto; aspect-ratio:1; max-height:320px; object-fit:contain; border-radius:12px; background:#fff; }
   .hero { display:flex; align-items:center; gap:22px; margin-top:16px; position:relative; z-index:1; }
   .ring { position:relative; width:84px; height:84px; flex-shrink:0; }
   .ring svg { width:84px; height:84px; transform:rotate(-90deg); }
@@ -195,8 +195,8 @@
         <div class="lan-meta" id="lanMeta"></div>
         <div class="lan-state" id="lanState">正在连接电脑…</div>
       </div>
-      <img id="lanQr" alt="连接二维码" width="72" height="72" />
-      <video id="lanScan" hidden playsinline style="width:72px;height:72px;border-radius:8px;object-fit:cover"></video>
+      <img id="lanQr" alt="连接二维码" width="320" height="320" />
+      <video id="lanScan" hidden playsinline style="border-radius:12px;background:#000"></video>
     </div>
     <div class="hero">
       <div class="ring">
@@ -429,19 +429,22 @@
   var SITE = 'https://cheerinspit.github.io/tasks-app-public';
   var link = null;
   function isHost(){ return location.hostname==='127.0.0.1' || location.hostname==='localhost'; }
+  var linked = false;
   function showQr(text){
-    var svg = new QRCode({content:text, padding:2, width:256, height:256, ecl:'L'}).svg();
+    var svg = new QRCode({content:text, padding:4, width:640, height:640, ecl:'L'}).svg();
     document.getElementById('lanQr').src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
   function wireChannel(ch){
     link = ch;
     ch.onopen = function(){
+      linked = true;
       setState('已連結，正在同步', true);
       document.getElementById('lanLabel').textContent = '已連結';
       ch.send(JSON.stringify({tasks:tasks, deleted:deleted, reply:false}));
     };
     ch.onclose = function(){
       link = null;
+      if (!linked) return;
       setState('连接已断开，数据仍在本机', false);
     };
     ch.onmessage = function(ev){
@@ -468,9 +471,13 @@
     var pc = new RTCPeerConnection({iceServers:[]});
     wireChannel(pc.createDataChannel('tasks'));
     pc.createOffer().then(function(o){ return pc.setLocalDescription(o); }).then(function(){ return waitIce(pc); }).then(function(){
-      var url = SITE + '/#o=' + encodeURIComponent(pc.localDescription.sdp);
+      var sdp = pc.localDescription.sdp.split('\n').filter(function(line){
+        if (line.indexOf('a=candidate:') !== 0) return true;
+        return line.indexOf(' typ host') > 0 && line.indexOf(' 127.0.0.1 ') < 0;
+      }).join('\n');
+      var url = SITE + '/#o=' + encodeURIComponent(sdp);
       document.getElementById('lanUrl').textContent = '请用手机相机扫描';
-      document.getElementById('lanMeta').textContent = '扫码后手机会出现二维码，再点这里的「读取手机二维码」。不在同一 Wi‑Fi 时不会同步。';
+      document.getElementById('lanMeta').textContent = '把手机拿近一点。扫码后手机会出现二维码，再点「读取手机二维码」。';
       showQr(url);
       window._pairPc = pc;
     }).catch(function(){ setState('无法生成连接码', false); });
